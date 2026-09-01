@@ -1,0 +1,52 @@
+{
+  "name": "announcer-sdk",
+  "version": "0.1.0",
+  "description": "Node.js SDK for Announcer — send transactional email from your own domain, DKIM-signed.",
+  "keywords": [
+    "announcer",
+    "email",
+    "transactional-email",
+    "smtp",
+    "dkim",
+    "webhooks"
+  ],
+  "license": "MIT",
+  "author": "Trond Bordewich",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZeldaIV/announcer-node.git"
+  },
+  "homepage": "https://misralo.com",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('.test-build',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && node scripts/fixup.mjs",
+    "typecheck": "tsc -p tsconfig.esm.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test .test-build/test/*.test.js",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
