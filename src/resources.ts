@@ -28,6 +28,8 @@ interface RawMessage {
   messageId: string | null;
   headerFrom: string;
   recipient: string;
+  recipientCount: number;
+  replyTo: string | null;
   subject: string | null;
   status: Message['status'];
   createdAt: string;
@@ -41,10 +43,17 @@ function toMessage(raw: RawMessage): Message {
     messageId: raw.messageId ?? null,
     from: raw.headerFrom,
     to: raw.recipient,
+    recipientCount: raw.recipientCount ?? 1,
+    replyTo: raw.replyTo ?? null,
     subject: raw.subject ?? null,
     status: raw.status,
     createdAt: raw.createdAt,
   };
+}
+
+/** The first address of a list, for error reporting. */
+function firstAddress(list: string | string[]): string | undefined {
+  return Array.isArray(list) ? list[0] : list;
 }
 
 export class Emails {
@@ -62,23 +71,40 @@ export class Emails {
    * });
    * ```
    *
+   * `to`, `cc` and `bcc` each take one address or several. Everything in `to`
+   * and `cc` is one email whose recipients see each other; `bcc` recipients see
+   * nobody. At most 50 addresses across the three.
+   *
+   * ```ts
+   * await announcer.emails.send({
+   *   from: 'billing@acme.com',
+   *   to: ['customer@example.com', 'partner@example.com'],
+   *   cc: 'accounting@acme.com',
+   *   replyTo: 'support@acme.com',
+   *   subject: 'Your receipt',
+   *   text: 'Thanks!',
+   * });
+   * ```
+   *
    * An `Idempotency-Key` is generated when you do not supply one, so the SDK's
    * automatic retries can never send twice. Supply your own — an order id, a job
    * id — to extend that guarantee across process restarts.
    *
+   * A recipient on your suppression list is dropped and reported in
+   * {@link SentEmail.suppressed}; the rest of the message still goes out. Only
+   * when every recipient is suppressed does this throw.
+   *
    * @throws {PermissionError} the `from` domain is not registered, or not verified.
-   * @throws {SuppressedRecipientError} the recipient previously bounced or complained.
-   * @throws {RateLimitError} a per-second limit or a daily/monthly quota.
+   * @throws {SuppressedRecipientError} every recipient previously bounced or complained.
+   * @throws {RateLimitError} a per-second limit or a daily/monthly quota. Note
+   * that quota counts recipients, so one call can consume several.
    */
   async send(options: SendEmailOptions): Promise<SentEmail> {
-    if (Array.isArray(options.to)) {
-      throw new TypeError(
-        'Announcer sends to one recipient per call. Use announcer.emails.sendMany(recipients, message) ' +
-          'to fan out, which gives you a per-recipient result and its own idempotency key.',
-      );
-    }
     if (!options.text && !options.html) {
       throw new TypeError('Provide `text`, `html`, or both — an email needs a body.');
+    }
+    if (Array.isArray(options.to) && options.to.length === 0) {
+      throw new TypeError('Provide at least one `to` recipient.');
     }
 
     const idempotencyKey = options.idempotencyKey ?? randomUUID();
@@ -88,12 +114,19 @@ export class Emails {
       messageId: string | null;
       status: SentEmail['status'];
       idempotentReplay?: boolean;
+      recipients?: number;
+      suppressed?: string[];
     }>({
       method: 'POST',
       path: '/v1/emails',
       body: {
         from: options.from,
         to: options.to,
+        cc: options.cc,
+        bcc: options.bcc,
+        // The API accepts `replyTo` too, but its documented request shape is
+        // snake_case; send the spelling the docs show.
+        reply_to: options.replyTo,
         subject: options.subject,
         text: options.text,
         html: options.html,
@@ -102,7 +135,7 @@ export class Emails {
       // Carrying a key makes a 409 mean "the original is still in flight", so
       // waiting and asking again is right. Without one it would be a real conflict.
       retryOn409: true,
-      errorContext: { recipient: options.to },
+      errorContext: { recipient: firstAddress(options.to) },
     });
 
     return {
@@ -110,15 +143,29 @@ export class Emails {
       messageId: raw.messageId ?? null,
       status: raw.status,
       idempotentReplay: raw.idempotentReplay === true,
+      // Older deployments predate both fields; a successful send is at least
+      // one recipient and dropped nobody.
+      recipients: raw.recipients ?? 1,
+      suppressed: raw.suppressed ?? [],
     };
   }
 
   /**
-   * Sends the same message to several recipients, one API call each, and returns
-   * a result per recipient. One failure does not stop the rest unless you pass
-   * `stopOnError`.
+   * Sends the same message to several recipients as **separate emails**, one
+   * API call each, and returns a result per recipient. One failure does not
+   * stop the rest unless you pass `stopOnError`.
    *
-   * These are separate emails: no recipient can see the others.
+   * This is not the same as passing an array to {@link Emails.send}:
+   *
+   * - `send({ to: [a, b] })` is one email. A and B see each other in the `To:`
+   *   header, it costs one request, and one bounce marks one message.
+   * - `sendMany([a, b], …)` is two emails. Neither knows the other exists, each
+   *   gets its own idempotency key and its own bounce, and one failure leaves
+   *   the other untouched.
+   *
+   * Use this one for anything list-shaped — a newsletter, a digest, a
+   * notification fan-out. Use `send` with an array when the recipients are
+   * genuinely on the same thread.
    */
   async sendMany(
     recipients: readonly string[],

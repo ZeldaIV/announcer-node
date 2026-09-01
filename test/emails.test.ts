@@ -33,7 +33,62 @@ describe('emails.send', () => {
       messageId: '<abc@acme.test>',
       status: 'sent',
       idempotentReplay: false,
+      recipients: 1,
+      suppressed: [],
     });
+  });
+
+  it('sends to, cc, bcc and replyTo, dropping the fields left unset', async () => {
+    const { client, calls } = testClient([
+      { body: { id: 'm', messageId: null, status: 'sent', recipients: 4 } },
+    ]);
+
+    const result = await client.send({
+      from: 'billing@acme.test',
+      to: ['a@example.com', 'b@example.com'],
+      cc: 'accounting@acme.test',
+      bcc: 'archive@acme.test',
+      replyTo: 'support@acme.test',
+      subject: 'Your receipt',
+      text: 'Thanks!',
+    });
+
+    assert.deepEqual(calls[0]!.body, {
+      from: 'billing@acme.test',
+      to: ['a@example.com', 'b@example.com'],
+      cc: 'accounting@acme.test',
+      bcc: 'archive@acme.test',
+      // The API accepts replyTo too, but snake_case is its documented shape.
+      reply_to: 'support@acme.test',
+      subject: 'Your receipt',
+      text: 'Thanks!',
+    });
+    assert.equal(result.recipients, 4, 'the billable count comes back');
+  });
+
+  it('reports recipients dropped for suppression without failing the send', async () => {
+    const { client } = testClient([
+      {
+        body: {
+          id: 'm',
+          messageId: '<x@acme.test>',
+          status: 'sent',
+          recipients: 2,
+          suppressed: ['dead@example.com'],
+        },
+      },
+    ]);
+
+    const result = await client.send({
+      from: 'a@acme.test',
+      to: ['good@example.com', 'dead@example.com'],
+      cc: 'copied@example.com',
+      text: 'hi',
+    });
+
+    // The message still went out — only the bad address was dropped.
+    assert.equal(result.recipients, 2);
+    assert.deepEqual(result.suppressed, ['dead@example.com']);
   });
 
   it('generates an Idempotency-Key so its own retries cannot double-send', async () => {
@@ -74,17 +129,13 @@ describe('emails.send', () => {
     assert.equal(result.idempotentReplay, true);
   });
 
-  it('refuses an array of recipients and points at sendMany', async () => {
-    const { client } = testClient([]);
+  it('refuses an empty recipient list before spending an API call', async () => {
+    const { client, calls } = testClient([]);
     await assert.rejects(
-      () =>
-        client.send({
-          from: 'a@acme.test',
-          to: ['b@example.com', 'c@example.com'] as unknown as string,
-          text: 'hi',
-        }),
-      /sendMany/,
+      () => client.send({ from: 'a@acme.test', to: [], text: 'hi' }),
+      /at least one/,
     );
+    assert.equal(calls.length, 0);
   });
 
   it('refuses a message with no body before spending an API call', async () => {
@@ -105,6 +156,7 @@ describe('emails.send', () => {
           title: 'Unprocessable Entity',
           status: 422,
           detail: 'bounced@example.com is on your suppression list.',
+          suppressed: ['bounced@example.com'],
         },
       },
     ]);
@@ -115,7 +167,37 @@ describe('emails.send', () => {
         assert.ok(error instanceof SuppressedRecipientError);
         assert.equal(error.status, 422);
         assert.equal(error.recipient, 'bounced@example.com');
+        // Read from the API's extension member, not parsed out of the prose.
+        assert.deepEqual(error.suppressed, ['bounced@example.com']);
         assert.match(error.message, /suppression list/);
+        return true;
+      },
+    );
+  });
+
+  it('lists every refused address when a whole send is suppressed', async () => {
+    const { client } = testClient([
+      {
+        status: 422,
+        body: {
+          status: 422,
+          detail: 'All 2 recipients are on your suppression list.',
+          suppressed: ['one@example.com', 'two@example.com'],
+        },
+      },
+    ]);
+
+    await assert.rejects(
+      () =>
+        client.send({
+          from: 'a@acme.test',
+          to: ['one@example.com', 'two@example.com'],
+          text: 'hi',
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof SuppressedRecipientError);
+        assert.deepEqual(error.suppressed, ['one@example.com', 'two@example.com']);
+        assert.equal(error.recipient, 'one@example.com');
         return true;
       },
     );
@@ -195,6 +277,8 @@ describe('emails.list', () => {
             message_id: '<x@acme.test>',
             header_from: 'billing@acme.test',
             recipient: 'customer@example.com',
+            recipient_count: 3,
+            reply_to: 'support@acme.test',
             subject: 'Receipt',
             status: 'delivered',
             created_at: '2026-09-01T10:00:00Z',
@@ -212,6 +296,8 @@ describe('emails.list', () => {
         messageId: '<x@acme.test>',
         from: 'billing@acme.test',
         to: 'customer@example.com',
+        recipientCount: 3,
+        replyTo: 'support@acme.test',
         subject: 'Receipt',
         status: 'delivered',
         createdAt: '2026-09-01T10:00:00Z',

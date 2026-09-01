@@ -16,6 +16,8 @@ export interface ProblemBody {
   detail?: string;
   errors?: Record<string, string[]>;
   error?: string;
+  /** RFC 9457 extension member on a suppression refusal: the refused addresses. */
+  suppressed?: string[];
 }
 
 export interface AnnouncerErrorInit {
@@ -89,18 +91,36 @@ export class ValidationError extends AnnouncerError {
 export class UnprocessableError extends AnnouncerError {}
 
 /**
- * 422 from `emails.send` — the recipient is on this account's suppression list
- * because they previously hard-bounced or complained. The attempt is still
+ * 422 from `emails.send` — every recipient is on this account's suppression
+ * list because they previously hard-bounced or complained. The attempt is still
  * recorded and still counts against quota; sending to them again requires
  * removing them from the list.
+ *
+ * A send where only *some* recipients are suppressed does not throw: the rest
+ * goes out and the dropped addresses come back in `SentEmail.suppressed`.
  */
 export class SuppressedRecipientError extends UnprocessableError {
-  /** The address that was refused. */
+  /**
+   * The addresses that were refused, as reported by the API.
+   *
+   * Prefer this over parsing {@link AnnouncerError.detail}: the API sends it as
+   * an RFC 9457 extension member precisely so clients need not read the prose.
+   */
+  readonly suppressed: string[];
+
+  /**
+   * The first refused address. Convenience for the common single-recipient
+   * case; falls back to the address the SDK sent when the API named none.
+   */
   readonly recipient?: string;
 
-  constructor(message: string, init: AnnouncerErrorInit & { recipient?: string }) {
+  constructor(
+    message: string,
+    init: AnnouncerErrorInit & { recipient?: string; suppressed?: string[] },
+  ) {
     super(message, init);
-    this.recipient = init.recipient;
+    this.suppressed = init.suppressed ?? [];
+    this.recipient = this.suppressed[0] ?? init.recipient;
   }
 }
 
@@ -204,7 +224,11 @@ export function errorFromResponse(
       // Only the send path can produce a suppression refusal, and its detail
       // always names the address. Anything else 422 is a plain unprocessable.
       if (context?.path === '/v1/emails') {
-        return new SuppressedRecipientError(message, { ...init, recipient: context.recipient });
+        return new SuppressedRecipientError(message, {
+          ...init,
+          recipient: context.recipient,
+          suppressed: body?.suppressed,
+        });
       }
       return new UnprocessableError(message, init);
     case 429:

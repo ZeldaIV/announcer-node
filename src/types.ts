@@ -18,17 +18,38 @@ export type EventType = 'sent' | 'delivered' | 'bounced' | 'complained' | 'suppr
 export type KeyScope = 'full' | 'send';
 
 /**
+ * One address or several. Every address may carry a display name:
+ * `"Acme Billing <billing@acme.com>"`.
+ */
+export type AddressList = string | string[];
+
+/**
  * An email to send.
  *
- * `from` and `to` accept either a bare address (`billing@acme.com`) or a
- * display name (`Acme Billing <billing@acme.com>`). At least one of `text` or
- * `html` is required.
+ * At least one of `text` or `html` is required. At most 50 addresses across
+ * `to`, `cc` and `bcc` combined.
  */
 export interface SendEmailOptions {
   /** Sender. Its domain must be registered to this account. */
   from: string;
-  /** The single recipient. For several, use `emails.sendMany`. */
-  to: string;
+  /**
+   * Primary recipients. Several addresses go out as one email and see each
+   * other in the `To:` header — for separate emails that share nothing, use
+   * `emails.sendMany`.
+   */
+  to: AddressList;
+  /** Carbon copies. Visible to every other recipient. */
+  cc?: AddressList;
+  /**
+   * Blind copies. They receive the message; nobody — including the other blind
+   * copies — sees that they did.
+   */
+  bcc?: AddressList;
+  /**
+   * Where replies should go. A header only: no delivery, nothing billable,
+   * nothing that can bounce.
+   */
+  replyTo?: AddressList;
   subject?: string;
   /** Plain-text body. Supply this even alongside `html` — filters like seeing both. */
   text?: string;
@@ -54,6 +75,17 @@ export interface SentEmail {
    * a second time and these are the original send's details.
    */
   idempotentReplay: boolean;
+  /**
+   * How many addresses this message actually went to, across to, cc and bcc.
+   * This is the number billed and counted against quota.
+   */
+  recipients: number;
+  /**
+   * Addresses that were dropped because they are on your suppression list.
+   * Empty on a clean send. The rest of the message still went out — only when
+   * *every* recipient is suppressed does the send fail outright.
+   */
+  suppressed: string[];
 }
 
 /** One row of send history. */
@@ -63,9 +95,21 @@ export interface Message {
   messageId: string | null;
   /** The `From:` header that went out. */
   from: string;
-  /** The recipient. */
+  /**
+   * The primary recipient — the first `to` address. A message with cc, bcc or
+   * several `to` addresses reports its first here and the total in
+   * {@link Message.recipientCount}.
+   */
   to: string;
+  /** How many addresses the message went to, across to, cc and bcc. */
+  recipientCount: number;
+  /** The `Reply-To:` header that went out, if any. */
+  replyTo: string | null;
   subject: string | null;
+  /**
+   * The message's rolled-up status. One bounced recipient makes the whole
+   * message `bounced` — it is the thing you have to act on.
+   */
   status: MessageStatus;
   createdAt: string;
 }
