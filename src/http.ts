@@ -38,7 +38,7 @@ export interface RequestOptions {
   errorContext?: { recipient?: string };
 }
 
-const SDK_VERSION = '0.1.0';
+const SDK_VERSION = '0.1.1';
 
 /** Statuses worth trying again. Everything else is the caller's problem. */
 function isRetryableStatus(status: number, retryOn409: boolean): boolean {

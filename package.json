@@ -1,6 +1,6 @@
 {
   "name": "announcer-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Node.js SDK for Announcer — send transactional email from your own domain, DKIM-signed.",
   "keywords": [
     "announcer",
