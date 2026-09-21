@@ -245,7 +245,7 @@ new Announcer(options: AnnouncerOptions)
 | Option      | Default                              | Notes |
 |-------------|--------------------------------------|-------|
 | `apiKey`    | `process.env.ANNOUNCER_API_KEY`      | Required, one way or the other. |
-| `baseUrl`   | `process.env.ANNOUNCER_BASE_URL`, then `https://mail.misralo.com` | Point at `http://localhost:8080` for a local stack. |
+| `baseUrl`   | `process.env.ANNOUNCER_BASE_URL`, then `https://mail.misralo.com` | |
 | `timeout`   | `30000`                              | Per attempt, in milliseconds. |
 | `maxRetries`| `2`                                  | Extra attempts after a failure. |
 | `fetch`     | global `fetch`                       | Swap in undici, a proxy wrapper, or a test double. |
@@ -289,17 +289,6 @@ const key = await announcer.apiKeys.create('production-worker', 'send');
 
 A leaked send key cannot register domains, mint successor keys, or touch
 billing. It is the difference between an incident and a catastrophe.
-
-## Local development
-
-Point the SDK at a local Announcer stack:
-
-```ts
-const announcer = new Announcer({
-  apiKey: 'ann_dev_0000000000000000000000000000',
-  baseUrl: 'http://localhost:8080',
-});
-```
 
 ## Contributing
 

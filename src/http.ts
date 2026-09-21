@@ -1,6 +1,6 @@
 import { AnnouncerError, ConnectionError, ProblemBody, errorFromResponse } from './errors.js';
 
-/** Where the hosted API lives. Override for self-hosted or local stacks. */
+/** Where the hosted API lives. */
 export const DEFAULT_BASE_URL = 'https://mail.misralo.com';
 
 export interface AnnouncerOptions {
