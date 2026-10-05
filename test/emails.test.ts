@@ -129,6 +129,28 @@ describe('emails.send', () => {
     assert.equal(result.idempotentReplay, true);
   });
 
+  it('base64-encodes attachment bytes and passes base64 strings through', async () => {
+    const { client, calls } = testClient([{ body: { id: 'm', messageId: null, status: 'sent' } }]);
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x00, 0xff]);
+
+    await client.send({
+      from: 'billing@acme.test',
+      to: 'customer@example.com',
+      text: 'Attached.',
+      attachments: [
+        { filename: 'a.pdf', content: Buffer.from(bytes) },
+        { filename: 'b.bin', content: bytes.buffer, contentType: 'application/octet-stream' },
+        { filename: 'logo.png', content: 'iVBORw0KGgo=', contentId: 'logo' },
+      ],
+    });
+
+    assert.deepEqual((calls[0]!.body as { attachments: unknown }).attachments, [
+      { filename: 'a.pdf', content: 'JVBERgD/' },
+      { filename: 'b.bin', content: 'JVBERgD/', content_type: 'application/octet-stream' },
+      { filename: 'logo.png', content: 'iVBORw0KGgo=', content_id: 'logo' },
+    ]);
+  });
+
   it('refuses an empty recipient list before spending an API call', async () => {
     const { client, calls } = testClient([]);
     await assert.rejects(
@@ -278,6 +300,7 @@ describe('emails.list', () => {
             header_from: 'billing@acme.test',
             recipient: 'customer@example.com',
             recipient_count: 3,
+            attachment_count: 2,
             reply_to: 'support@acme.test',
             subject: 'Receipt',
             status: 'delivered',
@@ -297,6 +320,7 @@ describe('emails.list', () => {
         from: 'billing@acme.test',
         to: 'customer@example.com',
         recipientCount: 3,
+        attachmentCount: 2,
         replyTo: 'support@acme.test',
         subject: 'Receipt',
         status: 'delivered',

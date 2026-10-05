@@ -35,6 +35,7 @@ export {
 export type {
   AddressList,
   ApiKey,
+  Attachment,
   CreatedApiKey,
   CreatedDomain,
   CreatedWebhookEndpoint,

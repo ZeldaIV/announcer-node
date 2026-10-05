@@ -4,6 +4,7 @@ import { AnnouncerError } from './errors.js';
 import type { HttpClient } from './http.js';
 import type {
   ApiKey,
+  Attachment,
   CreatedApiKey,
   CreatedDomain,
   CreatedWebhookEndpoint,
@@ -29,6 +30,7 @@ interface RawMessage {
   headerFrom: string;
   recipient: string;
   recipientCount: number;
+  attachmentCount?: number;
   replyTo: string | null;
   subject: string | null;
   status: Message['status'];
@@ -44,10 +46,28 @@ function toMessage(raw: RawMessage): Message {
     from: raw.headerFrom,
     to: raw.recipient,
     recipientCount: raw.recipientCount ?? 1,
+    // Older deployments predate attachments, and sent none.
+    attachmentCount: raw.attachmentCount ?? 0,
     replyTo: raw.replyTo ?? null,
     subject: raw.subject ?? null,
     status: raw.status,
     createdAt: raw.createdAt,
+  };
+}
+
+/** An attachment as the API takes it: base64 content, snake_case names. */
+function toWireAttachment(attachment: Attachment) {
+  const { content } = attachment;
+  return {
+    filename: attachment.filename,
+    content:
+      typeof content === 'string'
+        ? content
+        : Buffer.from(content instanceof ArrayBuffer ? new Uint8Array(content) : content).toString(
+            'base64',
+          ),
+    content_type: attachment.contentType,
+    content_id: attachment.contentId,
   };
 }
 
@@ -83,6 +103,18 @@ export class Emails {
    *   replyTo: 'support@acme.com',
    *   subject: 'Your receipt',
    *   text: 'Thanks!',
+   * });
+   * ```
+   *
+   * Attachments take the file's bytes; the SDK does the base64.
+   *
+   * ```ts
+   * await announcer.emails.send({
+   *   from: 'billing@acme.com',
+   *   to: 'customer@example.com',
+   *   subject: 'Invoice 1042',
+   *   text: 'Your invoice is attached.',
+   *   attachments: [{ filename: 'invoice-1042.pdf', content: await readFile('invoice.pdf') }],
    * });
    * ```
    *
@@ -130,6 +162,7 @@ export class Emails {
         subject: options.subject,
         text: options.text,
         html: options.html,
+        attachments: options.attachments?.map(toWireAttachment),
       },
       headers: { 'Idempotency-Key': idempotencyKey },
       // Carrying a key makes a 409 mean "the original is still in flight", so

@@ -24,10 +24,34 @@ export type KeyScope = 'full' | 'send';
 export type AddressList = string | string[];
 
 /**
+ * A file to attach, or an image for the HTML to show inline.
+ *
+ * Attachments are sent and never stored: not their contents, and not their
+ * names.
+ */
+export interface Attachment {
+  /** The name the recipient sees, with its extension. */
+  filename: string;
+  /**
+   * The file's bytes. A `Buffer` or any `Uint8Array` is encoded for you; a
+   * string is taken to be base64 already, as Resend's SDK takes it.
+   */
+  content: Uint8Array | ArrayBuffer | string;
+  /** Media type. Guessed from the filename when left out. */
+  contentType?: string;
+  /**
+   * Makes this an inline image: the HTML shows it with
+   * `<img src="cid:logo">` when this is `'logo'`.
+   */
+  contentId?: string;
+}
+
+/**
  * An email to send.
  *
  * At least one of `text` or `html` is required. At most 50 addresses across
- * `to`, `cc` and `bcc` combined.
+ * `to`, `cc` and `bcc` combined, at most 20 attachments, and 10 MB in all —
+ * text, html and attachments together.
  */
 export interface SendEmailOptions {
   /** Sender. Its domain must be registered to this account. */
@@ -55,6 +79,11 @@ export interface SendEmailOptions {
   text?: string;
   /** HTML body. */
   html?: string;
+  /**
+   * Files to attach. Executables (`.exe`, `.js`, `.bat`, ...) are refused,
+   * because Gmail and most mail servers would refuse them anyway.
+   */
+  attachments?: Attachment[];
   /**
    * Makes the send exactly-once. Left unset, the SDK generates one per call so
    * its own retries cannot double-send; set it yourself to keep that guarantee
@@ -103,6 +132,8 @@ export interface Message {
   to: string;
   /** How many addresses the message went to, across to, cc and bcc. */
   recipientCount: number;
+  /** How many files were attached. Their names and contents are not kept. */
+  attachmentCount: number;
   /** The `Reply-To:` header that went out, if any. */
   replyTo: string | null;
   subject: string | null;

@@ -117,6 +117,24 @@ derives the booleans you actually want (`domain.verified`, `key.revoked`,
 `endpoint.disabled`). Free-form `payload` and `detail` objects pass through
 untouched — those keys are your data.
 
+## Attachments
+
+Pass the file's bytes; the SDK does the base64.
+
+```ts
+import { readFile } from 'node:fs/promises';
+
+await announcer.emails.send({
+  from: 'billing@acme.com',
+  to: 'customer@example.com',
+  subject: 'Invoice 1042',
+  text: 'Your invoice is attached.',
+  attachments: [{ filename: 'invoice-1042.pdf', content: await readFile('invoice.pdf') }],
+});
+```
+
+At most 20 files and 10 MB per message, text and HTML included. Add a `contentId` to show an image inline with `<img src="cid:logo">`. Attachments are sent and never stored, and executables are refused.
+
 ## Several recipients
 
 `to`, `cc` and `bcc` each take one address or an array. Everything in `to` and
