@@ -112,7 +112,8 @@ The full set: `ValidationError` (with a per-field `.errors` map),
 
 **Field names are consistent.** The API mixes `camelCase` and `snake_case`
 depending on the endpoint. The SDK normalises everything to camelCase, maps
-`header_from`/`recipient` onto the `from`/`to` you already used to send, and
+`header_from`/`recipient` onto the `from`/`to` you already used to send, reports
+how many files a message carried as `attachmentCount`, and
 derives the booleans you actually want (`domain.verified`, `key.revoked`,
 `endpoint.disabled`). Free-form `payload` and `detail` objects pass through
 untouched — those keys are your data.
@@ -276,7 +277,7 @@ new Announcer(options: AnnouncerOptions)
 |------|------|
 | `announcer.send(msg)` | Shorthand for `emails.send`. |
 | `announcer.usage()` | Quota consumption plus a 14-day sending series. |
-| `emails.send(msg)` | Sends one email. `to`/`cc`/`bcc` take one address or many. |
+| `emails.send(msg)` | Sends one email. `to`/`cc`/`bcc` take one address or many; `attachments` take the file's bytes. |
 | `emails.sendMany(recipients, msg, opts?)` | Separate emails, one per recipient. |
 | `emails.list(query?)` | Send history. Filter by `status` or `search`. |
 | `emails.events(id)` | A message's audit trail. |
